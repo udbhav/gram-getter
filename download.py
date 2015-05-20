@@ -1,4 +1,5 @@
-import argparse, os
+import argparse, os, pprint, datetime
+import dateutil.parser
 import requests
 from jinja2 import Template
 
@@ -6,24 +7,41 @@ parser = argparse.ArgumentParser(description='Download instagrams with a certain
 parser.add_argument('--limit', help='Amount to download', type=int)
 parser.add_argument('--client_id', help='Instagram Client ID')
 parser.add_argument('--tag', help='Instagram Tag')
+parser.add_argument('--date', help='Date')
 args = parser.parse_args()
 
 url = "https://api.instagram.com/v1/tags/%s/media/recent?client_id=%s" % (args.tag, args.client_id)
 grabbed_data = []
 keep_going = True
 
+if args.date:
+    date = dateutil.parser.parse(args.date).date()
+else:
+    date = None
+
+pp = pprint.PrettyPrinter(indent=4)
+
 while keep_going:
     resp = requests.get(url).json()
     photos = resp['data']
     for p in photos:
         photo = {'url': p['link'], 'image': p['images']['standard_resolution']['url']}
-        grabbed_data.append(photo)
+        if date:
+            created = datetime.date.fromtimestamp(float(p['created_time']))
+            if created >= date:
+                grabbed_data.append(photo)
+            else:
+                keep_going = False
+        else:
+            grabbed_data.append(photo)
 
     next_url = resp['pagination'].get("next_url", None)
     if next_url and len(grabbed_data) < args.limit:
         url = next_url
     else:
         keep_going = False
+
+print(len(grabbed_data))
 
 def download_file(url):
     local_filename = url.split('/')[-1]
@@ -45,5 +63,3 @@ with open("index.html", "r") as f:
     output = template.render(photos=grabbed_data)
     with open("output.html", "w") as wf:
         wf.write(output)
-
-
